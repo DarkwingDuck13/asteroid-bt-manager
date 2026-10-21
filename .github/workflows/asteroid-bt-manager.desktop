@@ -1,9 +1,0 @@
-[Desktop Entry]
-Name=Bluetooth
-Comment=Pair and Connect Devices
-Exec=asteroid-bt-manager
-Icon=ios-bluetooth-outline
-X-Asteroid-Center-Color=#007aff
-X-Asteroid-Outer-Color=#001d40
-Type=Application
-Categories=Applications;
