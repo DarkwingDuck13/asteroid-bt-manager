@@ -6,7 +6,6 @@
 #include <QDebug>
 
 BluetoothManager::BluetoothManager(QObject *parent) : QObject(parent) {
-    // 1. Setup and Register the BlueZ Pairing Agent
     m_agent = new BluetoothAgent(this);
     connect(m_agent, &BluetoothAgent::passkeyDisplayed, this, &BluetoothManager::onPasskeyDisplayed);
     connect(m_agent, &BluetoothAgent::dismissed, this, &BluetoothManager::onPasskeyDismissed);
@@ -19,7 +18,6 @@ BluetoothManager::BluetoothManager(QObject *parent) : QObject(parent) {
         agentManager.call("RequestDefaultAgent", QVariant::fromValue(QDBusObjectPath("/app/agent")));
     }
 
-    // 2. Listen for BlueZ Device Discovery signals
     QDBusConnection::systemBus().connect(
         "org.bluez", "/", "org.freedesktop.DBus.ObjectManager",
         "InterfacesAdded", this, SLOT(onInterfacesAdded(QDBusObjectPath, QMap<QString, QVariantMap>))
@@ -39,10 +37,22 @@ BluetoothManager::~BluetoothManager() {
     }
 }
 
-QVariantList BluetoothManager::devices() const {
+QVariantList BluetoothManager::pairedDevices() const {
     QVariantList list;
     for (auto it = m_deviceMap.begin(); it != m_deviceMap.end(); ++it) {
-        list.append(it.value());
+        if (it.value().value("Paired").toBool()) {
+            list.append(it.value());
+        }
+    }
+    return list;
+}
+
+QVariantList BluetoothManager::availableDevices() const {
+    QVariantList list;
+    for (auto it = m_deviceMap.begin(); it != m_deviceMap.end(); ++it) {
+        if (!it.value().value("Paired").toBool()) {
+            list.append(it.value());
+        }
     }
     return list;
 }
@@ -65,7 +75,7 @@ void BluetoothManager::stopScan() {
     }
 }
 
-void BluetoothManager::connectDevice(const QString &address) {
+void BluetoothManager::pairDevice(const QString &address) {
     QString path = pathForAddress(address);
     if (path.isEmpty()) return;
 
@@ -84,17 +94,28 @@ void BluetoothManager::connectDevice(const QString &address) {
     }
 }
 
+void BluetoothManager::connectDevice(const QString &address) {
+    QString path = pathForAddress(address);
+    if (path.isEmpty()) return;
+
+    QDBusInterface dev("org.bluez", path, "org.bluez.Device1", QDBusConnection::systemBus());
+    if (dev.isValid()) {
+        dev.setProperty("Trusted", true);
+        dev.asyncCall("Connect");
+    }
+}
+
 void BluetoothManager::disconnectDevice(const QString &address) {
     QString path = pathForAddress(address);
     if (path.isEmpty()) return;
 
     QDBusInterface dev("org.bluez", path, "org.bluez.Device1", QDBusConnection::systemBus());
     if (dev.isValid()) {
-        dev.call("Disconnect");
+        dev.asyncCall("Disconnect");
     }
 }
 
-void BluetoothManager::removeDevice(const QString &address) {
+void BluetoothManager::forgetDevice(const QString &address) {
     QString path = pathForAddress(address);
     if (path.isEmpty()) return;
 
