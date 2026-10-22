@@ -4,6 +4,20 @@
 #include <QDebug>
 
 BluetoothManager::BluetoothManager(QObject *parent) : QObject(parent) {
+    // 1. Setup and Register the BlueZ Pairing Agent
+    m_agent = new BluetoothAgent(this);
+    connect(m_agent, &BluetoothAgent::passkeyDisplayed, this, &BluetoothManager::onPasskeyDisplayed);
+    connect(m_agent, &BluetoothAgent::dismissed, this, &BluetoothManager::onPasskeyDismissed);
+
+    QDBusConnection::systemBus().registerObject("/app/agent", m_agent, QDBusConnection::ExportAllSlots);
+
+    QDBusInterface agentManager("org.bluez", "/org/bluez", "org.bluez.AgentManager1", QDBusConnection::systemBus());
+    if (agentManager.isValid()) {
+        agentManager.call("RegisterAgent", QVariant::fromValue(QDBusObjectPath("/app/agent")), "KeyboardDisplay");
+        agentManager.call("RequestDefaultAgent", QVariant::fromValue(QDBusObjectPath("/app/agent")));
+    }
+
+    // 2. Listen for BlueZ Device Discovery signals
     QDBusConnection::systemBus().connect(
         "org.bluez", "/", "org.freedesktop.DBus.ObjectManager",
         "InterfacesAdded", this, SLOT(onInterfacesAdded(QDBusObjectPath, QMap<QString, QVariantMap>))
@@ -14,6 +28,13 @@ BluetoothManager::BluetoothManager(QObject *parent) : QObject(parent) {
     );
 
     refreshDevices();
+}
+
+BluetoothManager::~BluetoothManager() {
+    QDBusInterface agentManager("org.bluez", "/org/bluez", "org.bluez.AgentManager1", QDBusConnection::systemBus());
+    if (agentManager.isValid()) {
+        agentManager.call("UnregisterAgent", QVariant::fromValue(QDBusObjectPath("/app/agent")));
+    }
 }
 
 QVariantList BluetoothManager::devices() const {
@@ -74,6 +95,23 @@ void BluetoothManager::removeDevice(const QString &address) {
     }
 }
 
+void BluetoothManager::cancelPinPrompt() {
+    m_pinPromptVisible = false;
+    emit pinPromptVisibleChanged();
+}
+
+void BluetoothManager::onPasskeyDisplayed(const QString &pin) {
+    m_currentPin = pin;
+    m_pinPromptVisible = true;
+    emit pinChanged();
+    emit pinPromptVisibleChanged();
+}
+
+void BluetoothManager::onPasskeyDismissed() {
+    m_pinPromptVisible = false;
+    emit pinPromptVisibleChanged();
+}
+
 QString BluetoothManager::pathForAddress(const QString &address) const {
     QString formatted = address;
     formatted.replace(":", "_");
@@ -125,5 +163,11 @@ void BluetoothManager::onInterfacesRemoved(const QDBusObjectPath &path, const QS
 void BluetoothManager::onPropertiesChanged(const QString &interface, const QVariantMap &changed, const QStringList &invalidated) {
     Q_UNUSED(interface);
     Q_UNUSED(invalidated);
+
+    // If a device becomes connected or paired, dismiss the PIN modal automatically
+    if (changed.contains("Connected") && changed["Connected"].toBool()) {
+        m_pinPromptVisible = false;
+        emit pinPromptVisibleChanged();
+    }
     refreshDevices();
 }
