@@ -4,6 +4,7 @@
 #include <QtDBus/QDBusPendingCall>
 #include <QtDBus/QDBusPendingCallWatcher>
 #include <QtDBus/QDBusVariant>
+#include <QProcess>
 #include <QDebug>
 
 // Helper to unwrap QDBusVariant containers into native types
@@ -20,6 +21,11 @@ static QVariantMap unwrapDbusProps(const QVariantMap &props) {
 }
 
 BluetoothManager::BluetoothManager(QObject *parent) : QObject(parent) {
+    // 1. Register D-Bus Meta-Types so GetManagedObjects demarshals properly
+    qDBusRegisterMetaType<InterfaceMap>();
+    qDBusRegisterMetaType<ManagedObjectMap>();
+
+    // 2. Setup and Register the BlueZ Pairing Agent
     m_agent = new BluetoothAgent(this);
     connect(m_agent, &BluetoothAgent::passkeyDisplayed, this, &BluetoothManager::onPasskeyDisplayed);
     connect(m_agent, &BluetoothAgent::dismissed, this, &BluetoothManager::onPasskeyDismissed);
@@ -32,6 +38,7 @@ BluetoothManager::BluetoothManager(QObject *parent) : QObject(parent) {
         agentManager.call("RequestDefaultAgent", QVariant::fromValue(QDBusObjectPath("/app/agent")));
     }
 
+    // 3. Listen for BlueZ Device Discovery signals
     QDBusConnection::systemBus().connect(
         "org.bluez", "/", "org.freedesktop.DBus.ObjectManager",
         "InterfacesAdded", this, SLOT(onInterfacesAdded(QDBusObjectPath, QMap<QString, QVariantMap>))
@@ -163,8 +170,9 @@ QString BluetoothManager::pathForAddress(const QString &address) const {
 }
 
 void BluetoothManager::refreshDevices() {
+    // 1. Primary method: D-Bus GetManagedObjects
     QDBusInterface manager("org.bluez", "/", "org.freedesktop.DBus.ObjectManager", QDBusConnection::systemBus());
-    QDBusReply<QMap<QDBusObjectPath, QMap<QString, QVariantMap>>> reply = manager.call("GetManagedObjects");
+    QDBusReply<ManagedObjectMap> reply = manager.call("GetManagedObjects");
 
     if (reply.isValid()) {
         m_deviceMap.clear();
@@ -174,7 +182,35 @@ void BluetoothManager::refreshDevices() {
                 QString addr = props.value("Address").toString();
                 if (!addr.isEmpty()) {
                     m_deviceMap[addr] = props;
+                    qDebug() << "D-Bus loaded device:" << addr << props.value("Name").toString() << "Paired:" << props.value("Paired").toBool();
                 }
+            }
+        }
+        emit devicesChanged();
+    }
+
+    // 2. Guaranteed Fallback: Query bluetoothctl directly to ensure paired devices are ALWAYS loaded
+    QProcess proc;
+    proc.start("bluetoothctl", QStringList() << "devices" << "Paired");
+    if (proc.waitForFinished(1000)) {
+        QString out = QString::fromUtf8(proc.readAllStandardOutput());
+        QStringList lines = out.split('\n', Qt::SkipEmptyParts);
+        for (const QString &line : lines) {
+            QStringList parts = line.split(' ', Qt::SkipEmptyParts);
+            if (parts.size() >= 2 && parts[0] == "Device") {
+                QString addr = parts[1];
+                QString name = parts.mid(2).join(' ');
+                QString path = pathForAddress(addr);
+
+                QDBusInterface dev("org.bluez", path, "org.bluez.Device1", QDBusConnection::systemBus());
+                QVariantMap props;
+                props["Address"] = addr;
+                props["Name"] = dev.isValid() && !dev.property("Name").toString().isEmpty() ? dev.property("Name").toString() : name;
+                props["Paired"] = true;
+                props["Connected"] = dev.isValid() ? dev.property("Connected").toBool() : false;
+
+                m_deviceMap[addr] = props;
+                qDebug() << "Fallback verified paired device:" << addr << props["Name"] << "Connected:" << props["Connected"];
             }
         }
         emit devicesChanged();
