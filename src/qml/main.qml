@@ -11,89 +11,176 @@ Item {
         color: "#000000"
     }
 
-    Column {
+    Flickable {
+        id: flick
         anchors.fill: parent
-        anchors.margins: 40
-        spacing: 10
+        anchors.margins: 35
+        contentWidth: contentCol.width
+        contentHeight: contentCol.height
+        clip: true
 
-        Text {
-            anchors.horizontalCenter: parent.horizontalCenter
-            text: "Bluetooth"
-            color: "#ffffff"
-            font.bold: true
-            font.pixelSize: 22
-        }
+        Column {
+            id: contentCol
+            width: flick.width
+            spacing: 12
 
-        Button {
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: 140
-            height: 36
-            text: btManager.scanning ? "Scanning..." : "Scan"
-            onClicked: {
-                if (btManager.scanning) {
-                    btManager.stopScan()
-                } else {
-                    btManager.startScan()
-                }
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "Bluetooth"
+                color: "#ffffff"
+                font.bold: true
+                font.pixelSize: 22
             }
-        }
 
-        ListView {
-            id: listView
-            width: parent.width
-            height: parent.height - 80
-            clip: true
-            model: btManager.devices
+            // --- SECTION 1: PAIRED DEVICES ---
+            Text {
+                text: "PAIRED DEVICES"
+                color: "#00d2ff"
+                font.bold: true
+                font.pixelSize: 12
+                visible: btManager.pairedDevices.length > 0
+            }
 
-            delegate: Rectangle {
-                width: listView.width
-                height: 55
-                color: "#161616"
-                radius: 8
-                border.color: modelData.Connected ? "#2ecc71" : (modelData.Paired ? "#3498db" : "#333333")
-                border.width: 1
+            Repeater {
+                model: btManager.pairedDevices
+                delegate: Rectangle {
+                    width: contentCol.width
+                    height: 56
+                    color: "#161616"
+                    radius: 8
+                    border.color: modelData.Connected ? "#2ecc71" : "#444444"
+                    border.width: 1
 
-                Column {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 12
-                    anchors.verticalCenter: parent.verticalCenter
+                    Column {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 10
+                        anchors.verticalCenter: parent.verticalCenter
 
-                    Text {
-                        text: modelData.Name ? modelData.Name : modelData.Address
-                        color: "#ffffff"
-                        font.bold: true
-                        font.pixelSize: 15
-                        elide: Text.ElideRight
-                        width: 180
+                        Text {
+                            text: modelData.Name ? modelData.Name : modelData.Address
+                            color: "#ffffff"
+                            font.bold: true
+                            font.pixelSize: 14
+                            elide: Text.ElideRight
+                            width: 140
+                        }
+
+                        Text {
+                            text: modelData.Connected ? "Connected" : "Disconnected"
+                            color: modelData.Connected ? "#2ecc71" : "#888888"
+                            font.pixelSize: 11
+                        }
                     }
 
-                    Text {
-                        text: modelData.Connected ? "Connected" : (modelData.Paired ? "Paired" : modelData.Address)
-                        color: modelData.Connected ? "#2ecc71" : "#888888"
-                        font.pixelSize: 11
-                    }
-                }
+                    Row {
+                        anchors.right: parent.right
+                        anchors.rightMargin: 6
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 4
 
-                Button {
-                    anchors.right: parent.right
-                    anchors.rightMargin: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 70
-                    height: 32
-                    text: modelData.Connected ? "Drop" : "Pair"
-                    onClicked: {
-                        if (modelData.Connected) {
-                            btManager.disconnectDevice(modelData.Address)
-                        } else {
-                            btManager.connectDevice(modelData.Address)
+                        // Connect / Disconnect Toggle
+                        Button {
+                            width: 58
+                            height: 32
+                            text: modelData.Connected ? "Drop" : "Link"
+                            onClicked: {
+                                if (modelData.Connected) {
+                                    btManager.disconnectDevice(modelData.Address)
+                                } else {
+                                    btManager.connectDevice(modelData.Address)
+                                }
+                            }
+                        }
+
+                        // Forget / Unpair Button
+                        Button {
+                            width: 32
+                            height: 32
+                            text: "✕"
+                            palette.buttonText: "#ff4444"
+                            onClicked: btManager.forgetDevice(modelData.Address)
                         }
                     }
                 }
             }
+
+            // --- SECTION 2: AVAILABLE / SCAN DEVICES ---
+            Item { width: 1; height: 8 }
+
+            Row {
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: 10
+
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "NEARBY DEVICES"
+                    color: "#888888"
+                    font.bold: true
+                    font.pixelSize: 12
+                }
+
+                Button {
+                    width: 90
+                    height: 30
+                    text: btManager.scanning ? "Stop" : "Scan"
+                    onClicked: {
+                        if (btManager.scanning) {
+                            btManager.stopScan()
+                        } else {
+                            btManager.startScan()
+                        }
+                    }
+                }
+            }
+
+            Repeater {
+                model: btManager.availableDevices
+                delegate: Rectangle {
+                    width: contentCol.width
+                    height: 50
+                    color: "#121212"
+                    radius: 8
+                    border.color: "#2a2a2a"
+                    border.width: 1
+
+                    Column {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 10
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        Text {
+                            text: modelData.Name ? modelData.Name : modelData.Address
+                            color: "#dddddd"
+                            font.pixelSize: 13
+                            elide: Text.ElideRight
+                            width: 160
+                        }
+
+                        Text {
+                            text: modelData.Address
+                            color: "#666666"
+                            font.pixelSize: 10
+                        }
+                    }
+
+                    Button {
+                        anchors.right: parent.right
+                        anchors.rightMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 55
+                        height: 30
+                        text: "Pair"
+                        onClicked: btManager.pairDevice(modelData.Address)
+                    }
+                }
+            }
+
+            // Bottom breathing room for round display
+            Item { width: 1; height: 30 }
         }
     }
 
-    // Modal PIN / Passkey Display Overlay
+    // Modal PIN Display
     Rectangle {
         id: pinModal
         anchors.fill: parent
