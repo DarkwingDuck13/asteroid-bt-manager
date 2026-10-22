@@ -7,6 +7,12 @@
 #include <QtDBus/QDBusInterface>
 #include <QtDBus/QDBusObjectPath>
 
+// Define and register the D-Bus nested map types for GetManagedObjects
+typedef QMap<QString, QVariantMap> InterfaceMap;
+typedef QMap<QDBusObjectPath, InterfaceMap> ManagedObjectMap;
+Q_DECLARE_METATYPE(InterfaceMap)
+Q_DECLARE_METATYPE(ManagedObjectMap)
+
 class BluetoothAgent : public QObject {
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "org.bluez.Agent1")
