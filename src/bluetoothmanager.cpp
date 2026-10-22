@@ -3,7 +3,21 @@
 #include <QtDBus/QDBusMessage>
 #include <QtDBus/QDBusPendingCall>
 #include <QtDBus/QDBusPendingCallWatcher>
+#include <QtDBus/QDBusVariant>
 #include <QDebug>
+
+// Helper to unwrap QDBusVariant containers into native types
+static QVariantMap unwrapDbusProps(const QVariantMap &props) {
+    QVariantMap clean;
+    for (auto it = props.begin(); it != props.end(); ++it) {
+        QVariant val = it.value();
+        if (val.userType() == qMetaTypeId<QDBusVariant>() || val.canConvert<QDBusVariant>()) {
+            val = val.value<QDBusVariant>().variant();
+        }
+        clean[it.key()] = val;
+    }
+    return clean;
+}
 
 BluetoothManager::BluetoothManager(QObject *parent) : QObject(parent) {
     m_agent = new BluetoothAgent(this);
@@ -78,125 +92,3 @@ void BluetoothManager::stopScan() {
 void BluetoothManager::pairDevice(const QString &address) {
     QString path = pathForAddress(address);
     if (path.isEmpty()) return;
-
-    QDBusInterface *dev = new QDBusInterface("org.bluez", path, "org.bluez.Device1", QDBusConnection::systemBus(), this);
-    if (dev->isValid()) {
-        dev->setProperty("Trusted", true);
-
-        QDBusPendingCall async = dev->asyncCall("Pair");
-        QDBusPendingCallWatcher *watcher = new QDBusPendingCallWatcher(async, this);
-
-        connect(watcher, &QDBusPendingCallWatcher::finished, this, [dev, watcher]() {
-            watcher->deleteLater();
-            dev->asyncCall("Connect");
-            dev->deleteLater();
-        });
-    }
-}
-
-void BluetoothManager::connectDevice(const QString &address) {
-    QString path = pathForAddress(address);
-    if (path.isEmpty()) return;
-
-    QDBusInterface dev("org.bluez", path, "org.bluez.Device1", QDBusConnection::systemBus());
-    if (dev.isValid()) {
-        dev.setProperty("Trusted", true);
-        dev.asyncCall("Connect");
-    }
-}
-
-void BluetoothManager::disconnectDevice(const QString &address) {
-    QString path = pathForAddress(address);
-    if (path.isEmpty()) return;
-
-    QDBusInterface dev("org.bluez", path, "org.bluez.Device1", QDBusConnection::systemBus());
-    if (dev.isValid()) {
-        dev.asyncCall("Disconnect");
-    }
-}
-
-void BluetoothManager::forgetDevice(const QString &address) {
-    QString path = pathForAddress(address);
-    if (path.isEmpty()) return;
-
-    QDBusInterface adapter("org.bluez", "/org/bluez/hci0", "org.bluez.Adapter1", QDBusConnection::systemBus());
-    if (adapter.isValid()) {
-        adapter.call("RemoveDevice", QVariant::fromValue(QDBusObjectPath(path)));
-    }
-}
-
-void BluetoothManager::cancelPinPrompt() {
-    m_pinPromptVisible = false;
-    emit pinPromptVisibleChanged();
-}
-
-void BluetoothManager::onPasskeyDisplayed(const QString &pin) {
-    m_currentPin = pin;
-    m_pinPromptVisible = true;
-    emit pinChanged();
-    emit pinPromptVisibleChanged();
-}
-
-void BluetoothManager::onPasskeyDismissed() {
-    m_pinPromptVisible = false;
-    emit pinPromptVisibleChanged();
-}
-
-QString BluetoothManager::pathForAddress(const QString &address) const {
-    QString formatted = address;
-    formatted.replace(":", "_");
-    return "/org/bluez/hci0/dev_" + formatted;
-}
-
-void BluetoothManager::refreshDevices() {
-    QDBusInterface manager("org.bluez", "/", "org.freedesktop.DBus.ObjectManager", QDBusConnection::systemBus());
-    QDBusReply<QMap<QDBusObjectPath, QMap<QString, QVariantMap>>> reply = manager.call("GetManagedObjects");
-
-    if (reply.isValid()) {
-        m_deviceMap.clear();
-        for (auto it = reply.value().begin(); it != reply.value().end(); ++it) {
-            if (it.value().contains("org.bluez.Device1")) {
-                QVariantMap props = it.value()["org.bluez.Device1"];
-                QString addr = props.value("Address").toString();
-                if (!addr.isEmpty()) {
-                    m_deviceMap[addr] = props;
-                }
-            }
-        }
-        emit devicesChanged();
-    }
-}
-
-void BluetoothManager::onInterfacesAdded(const QDBusObjectPath &path, const QMap<QString, QVariantMap> &interfaces) {
-    if (interfaces.contains("org.bluez.Device1")) {
-        QVariantMap props = interfaces["org.bluez.Device1"];
-        QString addr = props.value("Address").toString();
-        if (!addr.isEmpty()) {
-            m_deviceMap[addr] = props;
-            emit devicesChanged();
-        }
-    }
-}
-
-void BluetoothManager::onInterfacesRemoved(const QDBusObjectPath &path, const QStringList &interfaces) {
-    if (interfaces.contains("org.bluez.Device1")) {
-        for (auto it = m_deviceMap.begin(); it != m_deviceMap.end(); ++it) {
-            if (pathForAddress(it.key()) == path.path()) {
-                m_deviceMap.erase(it);
-                emit devicesChanged();
-                break;
-            }
-        }
-    }
-}
-
-void BluetoothManager::onPropertiesChanged(const QString &interface, const QVariantMap &changed, const QStringList &invalidated) {
-    Q_UNUSED(interface);
-    Q_UNUSED(invalidated);
-
-    if (changed.contains("Connected") && changed["Connected"].toBool()) {
-        m_pinPromptVisible = false;
-        emit pinPromptVisibleChanged();
-    }
-    refreshDevices();
-}
