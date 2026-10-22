@@ -92,4 +92,58 @@ Item {
             }
         }
     }
+
+    // Modal PIN / Passkey Display Overlay
+    Rectangle {
+        id: pinModal
+        anchors.fill: parent
+        color: "#d9000000"
+        visible: btManager.pinPromptVisible
+
+        Rectangle {
+            width: 280
+            height: 200
+            radius: 16
+            color: "#1c1c1e"
+            border.color: "#00d2ff"
+            border.width: 2
+            anchors.centerIn: parent
+
+            Column {
+                anchors.centerIn: parent
+                spacing: 8
+
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "Type on Keyboard:"
+                    color: "#8e8e93"
+                    font.pixelSize: 13
+                }
+
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: btManager.currentPin
+                    color: "#00ff66"
+                    font.family: "Monospace"
+                    font.bold: true
+                    font.pixelSize: 32
+                }
+
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "& press Enter"
+                    color: "#00d2ff"
+                    font.pixelSize: 13
+                }
+
+                Button {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: 90
+                    height: 30
+                    text: "Cancel"
+                    onClicked: btManager.cancelPinPrompt()
+                }
+            }
+        }
+    }
 }
