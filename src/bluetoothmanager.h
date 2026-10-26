@@ -1,3 +1,13 @@
+/*
+ * =====================================================================
+ * Part of the AsteroidOS Custom Software Suite
+ * Architecture, Engine & UI Engineering by Gemini (Google)
+ * Co-Developed & Tested on-device by DarkwingDuck13
+ *
+ * Platform: AsteroidOS (Linux / Qt6 / OpenEmbedded / TicWatch Pro)
+ * =====================================================================
+ */
+
 #pragma once
 
 #include <QObject>
@@ -63,6 +73,9 @@ public:
     Q_INVOKABLE void disconnectDevice(const QString &address);
     Q_INVOKABLE void forgetDevice(const QString &address);
     Q_INVOKABLE void cancelPinPrompt();
+    
+    // Haptic Feedback
+    Q_INVOKABLE void buzz(int ms = 25);
 
 signals:
     void scanningChanged();
