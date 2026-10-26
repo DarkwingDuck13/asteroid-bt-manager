@@ -1,3 +1,13 @@
+/*
+ * =====================================================================
+ * Part of the AsteroidOS Custom Software Suite
+ * Architecture, Engine & UI Engineering by Gemini (Google)
+ * Co-Developed & Tested on-device by DarkwingDuck13
+ *
+ * Platform: AsteroidOS (Linux / Qt6 / OpenEmbedded / TicWatch Pro)
+ * =====================================================================
+ */
+
 #include "bluetoothmanager.h"
 #include <QtDBus/QDBusReply>
 #include <QtDBus/QDBusMessage>
@@ -5,9 +15,9 @@
 #include <QtDBus/QDBusPendingCallWatcher>
 #include <QtDBus/QDBusVariant>
 #include <QProcess>
+#include <QFile>
 #include <QDebug>
 
-// Helper to unwrap QDBusVariant containers into native types
 static QVariantMap unwrapDbusProps(const QVariantMap &props) {
     QVariantMap clean;
     for (auto it = props.begin(); it != props.end(); ++it) {
@@ -21,7 +31,6 @@ static QVariantMap unwrapDbusProps(const QVariantMap &props) {
 }
 
 BluetoothManager::BluetoothManager(QObject *parent) : QObject(parent) {
-    // 1. Setup and Register the BlueZ Pairing Agent
     m_agent = new BluetoothAgent(this);
     connect(m_agent, &BluetoothAgent::passkeyDisplayed, this, &BluetoothManager::onPasskeyDisplayed);
     connect(m_agent, &BluetoothAgent::dismissed, this, &BluetoothManager::onPasskeyDismissed);
@@ -34,7 +43,6 @@ BluetoothManager::BluetoothManager(QObject *parent) : QObject(parent) {
         agentManager.call("RequestDefaultAgent", QVariant::fromValue(QDBusObjectPath("/app/agent")));
     }
 
-    // 2. Listen for BlueZ Device Discovery signals
     QDBusConnection::systemBus().connect(
         "org.bluez", "/", "org.freedesktop.DBus.ObjectManager",
         "InterfacesAdded", this, SLOT(onInterfacesAdded(QDBusObjectPath, QMap<QString, QVariantMap>))
@@ -51,6 +59,14 @@ BluetoothManager::~BluetoothManager() {
     QDBusInterface agentManager("org.bluez", "/org/bluez", "org.bluez.AgentManager1", QDBusConnection::systemBus());
     if (agentManager.isValid()) {
         agentManager.call("UnregisterAgent", QVariant::fromValue(QDBusObjectPath("/app/agent")));
+    }
+}
+
+void BluetoothManager::buzz(int ms) {
+    QFile file("/sys/class/timed_output/vibrator/enable");
+    if (file.open(QIODevice::WriteOnly)) {
+        file.write(QByteArray::number(ms));
+        file.close();
     }
 }
 
@@ -166,7 +182,6 @@ QString BluetoothManager::pathForAddress(const QString &address) const {
 }
 
 void BluetoothManager::refreshDevices() {
-    // 1. Direct query via bluetoothctl to grab all known/paired devices immediately
     QProcess proc;
     proc.start("bluetoothctl", QStringList() << "devices");
     if (proc.waitForFinished(1500)) {
@@ -187,7 +202,6 @@ void BluetoothManager::refreshDevices() {
                 props["Connected"] = dev.isValid() ? dev.property("Connected").toBool() : false;
 
                 m_deviceMap[addr] = props;
-                qDebug() << "Loaded device on startup:" << addr << props["Name"] << "Paired:" << props["Paired"];
             }
         }
         emit devicesChanged();
